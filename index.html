@@ -1,0 +1,2076 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prédiction des Déviations de Forage</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.0/papaparse.min.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#5D5CDE',
+                        secondary: '#F3F4F6',
+                        dark: {
+                            primary: '#6E6DFF',
+                            secondary: '#2D2D2D'
+                        }
+                    }
+                }
+            }
+        }
+
+        // Détection du mode sombre
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            document.documentElement.classList.add('dark');
+        }
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', event => {
+            if (event.matches) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        });
+    </script>
+</head>
+<body class="bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-colors duration-200">
+    <div class="container mx-auto px-4 py-8 max-w-5xl">
+        <h1 class="text-3xl font-bold mb-6 text-center text-primary dark:text-dark-primary">Prédiction des Déviations de Forage Minier</h1>
+        
+        <!-- Onglets de navigation -->
+        <div class="mb-6">
+            <div class="border-b border-gray-300 dark:border-gray-700">
+                <nav class="flex flex-wrap -mb-px">
+                    <button id="tab-prediction" class="tab-button active py-4 px-6 border-b-2 border-primary dark:border-dark-primary font-medium text-primary dark:text-dark-primary">
+                        Prédiction
+                    </button>
+                    <button id="tab-data" class="tab-button py-4 px-6 border-b-2 border-transparent font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600">
+                        Données Historiques
+                    </button>
+                    <button id="tab-models" class="tab-button py-4 px-6 border-b-2 border-transparent font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600">
+                        Modèles ML
+                    </button>
+                </nav>
+            </div>
+        </div>
+        
+        <!-- Onglet de prédiction -->
+        <div id="content-prediction" class="tab-content active">
+            <div class="bg-gray-100 dark:bg-gray-800 p-6 rounded-lg shadow-md mb-8">
+                <h2 class="text-xl font-semibold mb-4">Paramètres du Forage</h2>
+                
+                <form id="drilling-form" class="space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label for="depth" class="block mb-2 font-medium">Profondeur Finale (m)</label>
+                            <input type="number" id="depth" min="0" max="5000" step="10" value="500" class="w-full p-3 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-700 text-base" required>
+                        </div>
+                        
+                        <div>
+                            <label for="azimuth" class="block mb-2 font-medium">Azimut Initial (°)</label>
+                            <input type="number" id="azimuth" min="0" max="360" step="0.1" value="90" class="w-full p-3 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-700 text-base" required>
+                        </div>
+                        
+                        <div>
+                            <label for="inclination" class="block mb-2 font-medium">Inclinaison Initiale (°)</label>
+                            <input type="number" id="inclination" min="-90" max="90" step="0.1" value="-60" class="w-full p-3 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-700 text-base" required>
+                        </div>
+                        
+                        <div>
+                            <label for="rotation_speed" class="block mb-2 font-medium">Vitesse de Rotation (RPM)</label>
+                            <input type="number" id="rotation_speed" min="50" max="1000" step="10" value="250" class="w-full p-3 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-700 text-base" required>
+                        </div>
+                        
+                        <div>
+                            <label for="lithology" class="block mb-2 font-medium">Lithologie</label>
+                            <select id="lithology" class="w-full p-3 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-700 text-base" required>
+                                <option value="granite">Granite</option>
+                                <option value="basalt">Basalte</option>
+                                <option value="limestone">Calcaire</option>
+                                <option value="sandstone">Grès</option>
+                                <option value="shale">Schiste</option>
+                                <option value="gneiss">Gneiss</option>
+                                <option value="dolomite">Dolomite</option>
+                                <option value="quartzite">Quartzite</option>
+                                <option value="marble">Marbre</option>
+                                <option value="slate">Ardoise</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div id="model-status" class="text-amber-600 dark:text-amber-400 font-medium text-sm mb-2">
+                        <svg class="inline-block w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                        </svg>
+                        Aucun modèle entraîné. Les prédictions utiliseront une simulation basique.
+                    </div>
+                    
+                    <button type="submit" class="w-full md:w-auto bg-primary hover:bg-opacity-90 dark:bg-dark-primary text-white font-bold py-3 px-6 rounded-lg transition-colors duration-200">
+                        Prédire les Déviations
+                    </button>
+                </form>
+            </div>
+            
+            <div id="results" class="hidden">
+                <div class="bg-gray-100 dark:bg-gray-800 p-6 rounded-lg shadow-md mb-8">
+                    <h2 class="text-xl font-semibold mb-4">Résultats de la Prédiction</h2>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                        <div class="bg-white dark:bg-gray-700 p-4 rounded-lg">
+                            <h3 class="font-medium mb-2">Déviation d'Azimut</h3>
+                            <div id="azimuth-deviation" class="text-2xl font-bold text-primary dark:text-dark-primary"></div>
+                            <div id="azimuth-confidence" class="text-sm text-gray-500 dark:text-gray-400 mt-1"></div>
+                        </div>
+                        
+                        <div class="bg-white dark:bg-gray-700 p-4 rounded-lg">
+                            <h3 class="font-medium mb-2">Déviation d'Inclinaison</h3>
+                            <div id="inclination-deviation" class="text-2xl font-bold text-primary dark:text-dark-primary"></div>
+                            <div id="inclination-confidence" class="text-sm text-gray-500 dark:text-gray-400 mt-1"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="bg-white dark:bg-gray-700 p-4 rounded-lg">
+                            <h3 class="font-medium mb-4">Projection d'Azimut</h3>
+                            <div class="relative" style="height: 300px;">
+                                <canvas id="azimuthChart"></canvas>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-white dark:bg-gray-700 p-4 rounded-lg">
+                            <h3 class="font-medium mb-4">Projection d'Inclinaison</h3>
+                            <div class="relative" style="height: 300px;">
+                                <canvas id="inclinationChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Onglet des données historiques -->
+        <div id="content-data" class="tab-content hidden">
+            <div class="bg-gray-100 dark:bg-gray-800 p-6 rounded-lg shadow-md mb-8">
+                <h2 class="text-xl font-semibold mb-4">Importation des Données Historiques</h2>
+                
+                <div class="mb-6">
+                    <p class="mb-4">Importez un fichier CSV contenant vos données historiques de forage. Le fichier doit contenir les colonnes suivantes :</p>
+                    <ul class="list-disc pl-6 mb-4 text-sm">
+                        <li>depth_final - Profondeur finale du forage (m)</li>
+                        <li>azimuth_initial - Azimut initial (°)</li>
+                        <li>inclination_initial - Inclinaison initiale (°)</li>
+                        <li>rotation_speed - Vitesse de rotation (RPM)</li>
+                        <li>lithology - Type de roche</li>
+                        <li>azimuth_deviation - Déviation d'azimut observée (°)</li>
+                        <li>inclination_deviation - Déviation d'inclinaison observée (°)</li>
+                    </ul>
+                    
+                    <div class="flex items-center justify-center w-full">
+                        <label for="csv-file" class="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 dark:bg-gray-700 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600">
+                            <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                                <svg class="w-8 h-8 mb-3 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                                </svg>
+                                <p class="mb-1 text-sm text-gray-500 dark:text-gray-400"><span class="font-semibold">Cliquez pour charger</span> ou glissez-déposez</p>
+                                <p class="text-xs text-gray-500 dark:text-gray-400">Fichier CSV (max. 5MB)</p>
+                            </div>
+                            <input id="csv-file" type="file" accept=".csv" class="hidden" />
+                        </label>
+                    </div>
+                </div>
+                
+                <div id="file-info" class="hidden mb-4 text-sm text-gray-600 dark:text-gray-400"></div>
+                
+                <div class="space-y-4">
+                    <button id="process-data" disabled class="w-full md:w-auto bg-primary hover:bg-opacity-90 dark:bg-dark-primary text-white font-bold py-3 px-6 rounded-lg transition-colors duration-200 opacity-50 cursor-not-allowed">
+                        Traiter les données et entraîner le modèle
+                    </button>
+                    
+                    <div id="sample-data-btn" class="text-sm text-primary dark:text-dark-primary cursor-pointer hover:underline">
+                        Utiliser des données d'exemple
+                    </div>
+                </div>
+            </div>
+            
+            <div id="data-processing" class="hidden">
+                <div class="bg-gray-100 dark:bg-gray-800 p-6 rounded-lg shadow-md mb-8">
+                    <h2 class="text-xl font-semibold mb-4">Aperçu des Données</h2>
+                    <div class="overflow-x-auto">
+                        <table id="data-table" class="min-w-full bg-white dark:bg-gray-700 rounded-lg overflow-hidden">
+                            <thead class="bg-gray-200 dark:bg-gray-800">
+                                <tr>
+                                    <!-- En-têtes générés dynamiquement -->
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Lignes générées dynamiquement -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-100 dark:bg-gray-800 p-6 rounded-lg shadow-md mb-8">
+                    <h2 class="text-xl font-semibold mb-4">Statistiques des Données</h2>
+                    
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div>
+                            <h3 class="font-medium mb-4">Distribution des Déviations d'Azimut</h3>
+                            <div class="bg-white dark:bg-gray-700 p-4 rounded-lg">
+                                <div class="relative" style="height: 250px;">
+                                    <canvas id="azimuthDataChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <h3 class="font-medium mb-4">Distribution des Déviations d'Inclinaison</h3>
+                            <div class="bg-white dark:bg-gray-700 p-4 rounded-lg">
+                                <div class="relative" style="height: 250px;">
+                                    <canvas id="inclinationDataChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="training-section" class="bg-gray-100 dark:bg-gray-800 p-6 rounded-lg shadow-md mb-8">
+                    <h2 class="text-xl font-semibold mb-4">Entraînement du Modèle</h2>
+                    
+                    <div id="training-progress" class="mb-6">
+                        <p class="mb-2 font-medium">Progression de l'entraînement</p>
+                        <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4">
+                            <div id="progress-bar" class="bg-primary dark:bg-dark-primary h-4 rounded-full" style="width: 0%"></div>
+                        </div>
+                        <p id="training-status" class="mt-2 text-sm">En attente de démarrage...</p>
+                    </div>
+                    
+                    <div id="training-results" class="hidden">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                            <div class="bg-white dark:bg-gray-700 p-4 rounded-lg">
+                                <h3 class="font-medium mb-2">Modèle de Déviation d'Azimut</h3>
+                                <div id="azimuth-accuracy" class="text-lg font-bold text-primary dark:text-dark-primary"></div>
+                                <div class="text-sm text-gray-500 dark:text-gray-400 mt-1">R² (coefficient de détermination)</div>
+                            </div>
+                            
+                            <div class="bg-white dark:bg-gray-700 p-4 rounded-lg">
+                                <h3 class="font-medium mb-2">Modèle de Déviation d'Inclinaison</h3>
+                                <div id="inclination-accuracy" class="text-lg font-bold text-primary dark:text-dark-primary"></div>
+                                <div class="text-sm text-gray-500 dark:text-gray-400 mt-1">R² (coefficient de détermination)</div>
+                            </div>
+                        </div>
+                        
+                        <button id="use-model" class="w-full md:w-auto bg-primary hover:bg-opacity-90 dark:bg-dark-primary text-white font-bold py-3 px-6 rounded-lg transition-colors duration-200">
+                            Utiliser ce modèle pour les prédictions
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Onglet des modèles ML -->
+        <div id="content-models" class="tab-content hidden">
+            <div class="bg-gray-100 dark:bg-gray-800 p-6 rounded-lg shadow-md mb-8">
+                <h2 class="text-xl font-semibold mb-4">Sélection et Configuration des Modèles ML</h2>
+                
+                <div class="mb-6">
+                    <p class="mb-4">Choisissez un algorithme de machine learning et configurez ses paramètres pour la prédiction des déviations de forage. Assurez-vous d'avoir importé des données historiques avant d'utiliser ces modèles.</p>
+                    
+                    <div id="no-data-warning" class="bg-yellow-50 dark:bg-yellow-900 border-l-4 border-yellow-400 p-4 mb-6 rounded">
+                        <div class="flex">
+                            <div class="flex-shrink-0">
+                                <svg class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                                </svg>
+                            </div>
+                            <div class="ml-3">
+                                <p class="text-sm text-yellow-800 dark:text-yellow-200">
+                                    Aucune donnée historique disponible. Veuillez d'abord importer des données dans l'onglet "Données Historiques".
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="model-selector" class="hidden">
+                        <div class="mb-6">
+                            <label for="model-type" class="block mb-2 font-medium">Type de Modèle</label>
+                            <select id="model-type" class="w-full p-3 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-700 text-base">
+                                <option value="linear">Régression Linéaire</option>
+                                <option value="random-forest">Random Forest</option>
+                                <option value="svm">SVM (Support Vector Machine)</option>
+                                <option value="neural-network">Réseau de Neurones</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Paramètres spécifiques à chaque modèle -->
+                        <div id="model-params-container" class="bg-white dark:bg-gray-700 p-4 rounded-lg mb-6">
+                            <!-- Paramètres Linear Regression -->
+                            <div id="params-linear" class="model-params">
+                                <h3 class="font-medium mb-4">Paramètres - Régression Linéaire</h3>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block mb-2 text-sm">Normalisation</label>
+                                        <select id="linear-normalize" class="w-full p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-sm">
+                                            <option value="true">Oui</option>
+                                            <option value="false">Non</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block mb-2 text-sm">Régularisation</label>
+                                        <select id="linear-regularization" class="w-full p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-sm">
+                                            <option value="none">Aucune</option>
+                                            <option value="l1">L1 (Lasso)</option>
+                                            <option value="l2">L2 (Ridge)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Paramètres Random Forest -->
+                            <div id="params-random-forest" class="model-params hidden">
+                                <h3 class="font-medium mb-4">Paramètres - Random Forest</h3>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label for="rf-n-estimators" class="block mb-2 text-sm">Nombre d'arbres</label>
+                                        <input type="range" id="rf-n-estimators" min="10" max="200" step="10" value="100" 
+                                               class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                                        <div class="flex justify-between text-xs mt-1">
+                                            <span>10</span>
+                                            <span id="rf-n-estimators-value">100</span>
+                                            <span>200</span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label for="rf-max-depth" class="block mb-2 text-sm">Profondeur maximale des arbres</label>
+                                        <input type="range" id="rf-max-depth" min="2" max="20" step="1" value="10" 
+                                               class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                                        <div class="flex justify-between text-xs mt-1">
+                                            <span>2</span>
+                                            <span id="rf-max-depth-value">10</span>
+                                            <span>20</span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label for="rf-min-samples-split" class="block mb-2 text-sm">Min. échantillons pour division</label>
+                                        <input type="range" id="rf-min-samples-split" min="2" max="10" step="1" value="2" 
+                                               class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                                        <div class="flex justify-between text-xs mt-1">
+                                            <span>2</span>
+                                            <span id="rf-min-samples-split-value">2</span>
+                                            <span>10</span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label for="rf-min-samples-leaf" class="block mb-2 text-sm">Min. échantillons par feuille</label>
+                                        <input type="range" id="rf-min-samples-leaf" min="1" max="10" step="1" value="1" 
+                                               class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                                        <div class="flex justify-between text-xs mt-1">
+                                            <span>1</span>
+                                            <span id="rf-min-samples-leaf-value">1</span>
+                                            <span>10</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Paramètres SVM -->
+                            <div id="params-svm" class="model-params hidden">
+                                <h3 class="font-medium mb-4">Paramètres - Support Vector Machine</h3>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block mb-2 text-sm">Noyau</label>
+                                        <select id="svm-kernel" class="w-full p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-sm">
+                                            <option value="linear">Linéaire</option>
+                                            <option value="poly">Polynomial</option>
+                                            <option value="rbf" selected>RBF (Fonction de base radiale)</option>
+                                            <option value="sigmoid">Sigmoïde</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label for="svm-c" class="block mb-2 text-sm">Régularisation (C)</label>
+                                        <input type="range" id="svm-c" min="0.1" max="10" step="0.1" value="1" 
+                                               class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                                        <div class="flex justify-between text-xs mt-1">
+                                            <span>0.1</span>
+                                            <span id="svm-c-value">1.0</span>
+                                            <span>10</span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label for="svm-gamma" class="block mb-2 text-sm">Gamma (pour noyaux RBF, Polynomial, Sigmoïde)</label>
+                                        <input type="range" id="svm-gamma" min="0.01" max="1" step="0.01" value="0.1" 
+                                               class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                                        <div class="flex justify-between text-xs mt-1">
+                                            <span>0.01</span>
+                                            <span id="svm-gamma-value">0.1</span>
+                                            <span>1</span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label for="svm-epsilon" class="block mb-2 text-sm">Epsilon (marge d'insensibilité)</label>
+                                        <input type="range" id="svm-epsilon" min="0.01" max="0.5" step="0.01" value="0.1" 
+                                               class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                                        <div class="flex justify-between text-xs mt-1">
+                                            <span>0.01</span>
+                                            <span id="svm-epsilon-value">0.1</span>
+                                            <span>0.5</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Paramètres Neural Network -->
+                            <div id="params-neural-network" class="model-params hidden">
+                                <h3 class="font-medium mb-4">Paramètres - Réseau de Neurones</h3>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block mb-2 text-sm">Architecture</label>
+                                        <select id="nn-architecture" class="w-full p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-sm">
+                                            <option value="simple">Simple (1 couche cachée)</option>
+                                            <option value="medium" selected>Moyenne (2 couches cachées)</option>
+                                            <option value="complex">Complexe (3+ couches cachées)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label for="nn-neurons" class="block mb-2 text-sm">Neurones par couche cachée</label>
+                                        <input type="range" id="nn-neurons" min="5" max="100" step="5" value="50" 
+                                               class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                                        <div class="flex justify-between text-xs mt-1">
+                                            <span>5</span>
+                                            <span id="nn-neurons-value">50</span>
+                                            <span>100</span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label for="nn-epochs" class="block mb-2 text-sm">Nombre d'époques</label>
+                                        <input type="range" id="nn-epochs" min="10" max="500" step="10" value="100" 
+                                               class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                                        <div class="flex justify-between text-xs mt-1">
+                                            <span>10</span>
+                                            <span id="nn-epochs-value">100</span>
+                                            <span>500</span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label for="nn-learning-rate" class="block mb-2 text-sm">Taux d'apprentissage</label>
+                                        <input type="range" id="nn-learning-rate" min="0.001" max="0.1" step="0.001" value="0.01" 
+                                               class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                                        <div class="flex justify-between text-xs mt-1">
+                                            <span>0.001</span>
+                                            <span id="nn-learning-rate-value">0.01</span>
+                                            <span>0.1</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-6">
+                            <label class="block mb-2 font-medium">Division des données</label>
+                            <div class="flex flex-wrap items-center gap-4">
+                                <div class="flex items-center">
+                                    <span class="mr-2 text-sm">Entraînement:</span>
+                                    <input type="range" id="train-test-split" min="50" max="90" step="5" value="75" 
+                                           class="w-28 h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                                    <span id="train-split-value" class="ml-2 text-sm">75%</span>
+                                </div>
+                                <div class="flex items-center">
+                                    <span class="mr-2 text-sm">Test:</span>
+                                    <span id="test-split-value" class="text-sm">25%</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <button id="train-ml-model" class="w-full md:w-auto bg-primary hover:bg-opacity-90 dark:bg-dark-primary text-white font-bold py-3 px-6 rounded-lg transition-colors duration-200">
+                            Entraîner le modèle
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="ml-training-progress" class="hidden bg-gray-100 dark:bg-gray-800 p-6 rounded-lg shadow-md mb-8">
+                <h2 class="text-xl font-semibold mb-4">Progression de l'Entraînement ML</h2>
+                
+                <div class="mb-6">
+                    <p class="mb-2 font-medium">Progression</p>
+                    <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4">
+                        <div id="ml-progress-bar" class="bg-primary dark:bg-dark-primary h-4 rounded-full" style="width: 0%"></div>
+                    </div>
+                    <p id="ml-training-status" class="mt-2 text-sm">Initialisation...</p>
+                </div>
+                
+                <div id="ml-training-logs" class="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg mb-6 h-48 overflow-y-auto font-mono text-xs">
+                    <!-- Logs générés dynamiquement -->
+                </div>
+            </div>
+            
+            <div id="ml-results" class="hidden">
+                <div class="bg-gray-100 dark:bg-gray-800 p-6 rounded-lg shadow-md mb-8">
+                    <h2 class="text-xl font-semibold mb-4">Résultats de l'Entraînement</h2>
+                    
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                        <div class="bg-white dark:bg-gray-700 p-4 rounded-lg">
+                            <h3 class="font-medium mb-2">Modèle de Déviation d'Azimut</h3>
+                            <div class="mb-4">
+                                <div id="ml-azimuth-r2" class="text-lg font-bold text-primary dark:text-dark-primary"></div>
+                                <div class="text-sm text-gray-500 dark:text-gray-400">R² (coefficient de détermination)</div>
+                            </div>
+                            <div class="mb-4">
+                                <div id="ml-azimuth-mse" class="text-lg font-bold text-primary dark:text-dark-primary"></div>
+                                <div class="text-sm text-gray-500 dark:text-gray-400">MSE (erreur quadratique moyenne)</div>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-white dark:bg-gray-700 p-4 rounded-lg">
+                            <h3 class="font-medium mb-2">Modèle de Déviation d'Inclinaison</h3>
+                            <div class="mb-4">
+                                <div id="ml-inclination-r2" class="text-lg font-bold text-primary dark:text-dark-primary"></div>
+                                <div class="text-sm text-gray-500 dark:text-gray-400">R² (coefficient de détermination)</div>
+                            </div>
+                            <div class="mb-4">
+                                <div id="ml-inclination-mse" class="text-lg font-bold text-primary dark:text-dark-primary"></div>
+                                <div class="text-sm text-gray-500 dark:text-gray-400">MSE (erreur quadratique moyenne)</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                        <div class="bg-white dark:bg-gray-700 p-4 rounded-lg">
+                            <h3 class="font-medium mb-4">Prédictions vs. Valeurs Réelles (Azimut)</h3>
+                            <div class="relative" style="height: 300px;">
+                                <canvas id="ml-azimuth-chart"></canvas>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-white dark:bg-gray-700 p-4 rounded-lg">
+                            <h3 class="font-medium mb-4">Prédictions vs. Valeurs Réelles (Inclinaison)</h3>
+                            <div class="relative" style="height: 300px;">
+                                <canvas id="ml-inclination-chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="flex flex-wrap gap-4">
+                        <button id="use-ml-model" class="bg-primary hover:bg-opacity-90 dark:bg-dark-primary text-white font-bold py-3 px-6 rounded-lg transition-colors duration-200">
+                            Utiliser ce modèle pour les prédictions
+                        </button>
+                        
+                        <button id="compare-models" class="bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-800 text-white font-bold py-3 px-6 rounded-lg transition-colors duration-200">
+                            Comparer avec d'autres modèles
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="models-comparison" class="hidden bg-gray-100 dark:bg-gray-800 p-6 rounded-lg shadow-md mb-8">
+                    <h2 class="text-xl font-semibold mb-4">Comparaison des Modèles</h2>
+                    
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="bg-white dark:bg-gray-700 p-4 rounded-lg">
+                            <h3 class="font-medium mb-4">Performance - Déviation d'Azimut</h3>
+                            <div class="relative" style="height: 300px;">
+                                <canvas id="model-comparison-azimuth"></canvas>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-white dark:bg-gray-700 p-4 rounded-lg">
+                            <h3 class="font-medium mb-4">Performance - Déviation d'Inclinaison</h3>
+                            <div class="relative" style="height: 300px;">
+                                <canvas id="model-comparison-inclination"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Variables globales
+        let azimuthChart, inclinationChart, azimuthDataChart, inclinationDataChart;
+        let historicalData = [];
+        let trainedModel = null;
+        let modelTrained = false;
+        
+        // Gestion des onglets
+        document.querySelectorAll('.tab-button').forEach(button => {
+            button.addEventListener('click', () => {
+                // Désactiver tous les onglets
+                document.querySelectorAll('.tab-button').forEach(btn => {
+                    btn.classList.remove('active', 'border-primary', 'dark:border-dark-primary', 'text-primary', 'dark:text-dark-primary');
+                    btn.classList.add('border-transparent', 'text-gray-500', 'dark:text-gray-400');
+                });
+                
+                // Masquer tous les contenus d'onglet
+                document.querySelectorAll('.tab-content').forEach(content => {
+                    content.classList.add('hidden');
+                });
+                
+                // Activer l'onglet cliqué
+                button.classList.remove('border-transparent', 'text-gray-500', 'dark:text-gray-400');
+                button.classList.add('active', 'border-primary', 'dark:border-dark-primary', 'text-primary', 'dark:text-dark-primary');
+                
+                // Afficher le contenu correspondant
+                const targetId = button.id.replace('tab-', 'content-');
+                document.getElementById(targetId).classList.remove('hidden');
+            });
+        });
+        
+        // Gestion de l'importation des données
+        document.getElementById('csv-file').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            // Vérifier le type de fichier
+            if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
+                alert('Veuillez importer un fichier CSV valide');
+                return;
+            }
+            
+            // Afficher les informations du fichier
+            const fileInfo = document.getElementById('file-info');
+            fileInfo.classList.remove('hidden');
+            fileInfo.innerHTML = `
+                <div class="flex items-center">
+                    <svg class="w-5 h-5 mr-2 text-primary dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    <span>${file.name} (${(file.size / 1024).toFixed(2)} Ko)</span>
+                </div>
+            `;
+            
+            // Activer le bouton de traitement
+            document.getElementById('process-data').disabled = false;
+            document.getElementById('process-data').classList.remove('opacity-50', 'cursor-not-allowed');
+        });
+        
+        // Utiliser des données d'exemple
+        document.getElementById('sample-data-btn').addEventListener('click', function() {
+            // Générer des données d'exemple
+            historicalData = generateSampleData(200);
+            
+            // Afficher les informations du fichier
+            const fileInfo = document.getElementById('file-info');
+            fileInfo.classList.remove('hidden');
+            fileInfo.innerHTML = `
+                <div class="flex items-center">
+                    <svg class="w-5 h-5 mr-2 text-primary dark:text-dark-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    <span>Données d'exemple (200 entrées)</span>
+                </div>
+            `;
+            
+            // Activer le bouton de traitement
+            document.getElementById('process-data').disabled = false;
+            document.getElementById('process-data').classList.remove('opacity-50', 'cursor-not-allowed');
+        });
+        
+        // Traitement des données et entraînement du modèle
+        document.getElementById('process-data').addEventListener('click', async function() {
+            // Si les données ne sont pas déjà générées à partir des données d'exemple
+            if (historicalData.length === 0) {
+                const fileInput = document.getElementById('csv-file');
+                const file = fileInput.files[0];
+                if (!file) return;
+                
+                // Lire le fichier CSV
+                try {
+                    historicalData = await parseCSV(file);
+                } catch (error) {
+                    console.error('Erreur lors de la lecture du fichier CSV:', error);
+                    return;
+                }
+            }
+            
+            // Afficher la section de traitement des données
+            document.getElementById('data-processing').classList.remove('hidden');
+            
+            // Afficher l'aperçu des données
+            displayDataTable(historicalData.slice(0, 10));
+            
+            // Initialiser les graphiques de données
+            initDataCharts(historicalData);
+            
+            // Simuler l'entraînement du modèle
+            await trainModel(historicalData);
+            
+            // Faire défiler jusqu'à la section d'entraînement
+            document.getElementById('training-section').scrollIntoView({ behavior: 'smooth' });
+        });
+        
+        // Utiliser le modèle entraîné
+        document.getElementById('use-model').addEventListener('click', function() {
+            // Mettre à jour le statut du modèle
+            const modelStatus = document.getElementById('model-status');
+            modelStatus.className = 'text-green-600 dark:text-green-400 font-medium text-sm mb-2';
+            modelStatus.innerHTML = `
+                <svg class="inline-block w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                Modèle ML entraîné utilisé pour les prédictions (R² Az: ${trainedModel.azimuthAccuracy}, R² Inc: ${trainedModel.inclinationAccuracy})
+            `;
+            
+            // Définir le flag du modèle entraîné
+            modelTrained = true;
+            
+            // Basculer vers l'onglet de prédiction
+            document.getElementById('tab-prediction').click();
+        });
+        
+        // Fonction pour lire et parser un fichier CSV
+        function parseCSV(file) {
+            return new Promise((resolve, reject) => {
+                Papa.parse(file, {
+                    header: true,
+                    dynamicTyping: true,
+                    complete: function(results) {
+                        if (results.errors.length > 0) {
+                            reject(results.errors);
+                        } else {
+                            resolve(results.data);
+                        }
+                    },
+                    error: function(error) {
+                        reject(error);
+                    }
+                });
+            });
+        }
+        
+        // Fonction pour générer des données d'exemple
+        function generateSampleData(count) {
+            const lithologies = ['granite', 'basalt', 'limestone', 'sandstone', 'shale', 'gneiss', 'dolomite', 'quartzite', 'marble', 'slate'];
+            const data = [];
+            
+            // Facteurs simulés pour chaque lithologie
+            const lithologyFactors = {
+                granite: { azimuth: 0.8, inclination: 0.6 },
+                basalt: { azimuth: 1.2, inclination: 0.9 },
+                limestone: { azimuth: 1.5, inclination: 1.3 },
+                sandstone: { azimuth: 1.8, inclination: 1.6 },
+                shale: { azimuth: 2.0, inclination: 1.8 },
+                gneiss: { azimuth: 0.9, inclination: 0.7 },
+                dolomite: { azimuth: 1.4, inclination: 1.2 },
+                quartzite: { azimuth: 0.7, inclination: 0.5 },
+                marble: { azimuth: 1.1, inclination: 0.8 },
+                slate: { azimuth: 1.7, inclination: 1.5 }
+            };
+            
+            for (let i = 0; i < count; i++) {
+                // Générer des valeurs aléatoires pour les paramètres
+                const depth_final = Math.round(Math.random() * 1000 + 100);
+                const azimuth_initial = Math.round(Math.random() * 360);
+                const inclination_initial = Math.round(Math.random() * 180 - 90);
+                const rotation_speed = Math.round(Math.random() * 600 + 100); // Entre 100 et 700 RPM
+                const lithology = lithologies[Math.floor(Math.random() * lithologies.length)];
+                
+                // Calculer les déviations en fonction des paramètres
+                const depthFactor = Math.sqrt(depth_final) / 10;
+                const factor = lithologyFactors[lithology];
+                
+                // Calculer l'impact de la vitesse de rotation
+                const rotationFactor = calculateRotationFactor(rotation_speed);
+                
+                // Ajouter un peu de bruit aléatoire pour simuler des données réelles
+                const noise = () => (Math.random() * 2 - 1) * 3;
+                
+                // Calculer les déviations simulées
+                let azimuth_deviation = (depthFactor * factor.azimuth * rotationFactor * (Math.random() * 0.5 + 0.75));
+                let inclination_deviation = (depthFactor * factor.inclination * rotationFactor * (Math.random() * 0.5 + 0.75));
+                
+                // Ajuster selon l'inclinaison initiale
+                const inclinationAdjustment = 1 + Math.abs(Math.cos(inclination_initial * Math.PI / 180)) * 0.5;
+                azimuth_deviation *= inclinationAdjustment;
+                
+                // Ajouter du bruit et changer aléatoirement le signe
+                if (Math.random() > 0.5) azimuth_deviation *= -1;
+                if (Math.random() > 0.5) inclination_deviation *= -1;
+                
+                // Ajouter l'entrée aux données
+                data.push({
+                    depth_final,
+                    azimuth_initial,
+                    inclination_initial,
+                    rotation_speed,
+                    lithology,
+                    azimuth_deviation: parseFloat(azimuth_deviation.toFixed(2)) + noise(),
+                    inclination_deviation: parseFloat(inclination_deviation.toFixed(2)) + noise()
+                });
+            }
+            
+            return data;
+        }
+        
+        // Fonction pour afficher l'aperçu des données dans un tableau
+        function displayDataTable(data) {
+            if (!data || data.length === 0) return;
+            
+            const table = document.getElementById('data-table');
+            const thead = table.querySelector('thead tr');
+            const tbody = table.querySelector('tbody');
+            
+            // Vider le tableau
+            thead.innerHTML = '';
+            tbody.innerHTML = '';
+            
+            // Ajouter les en-têtes
+            const headers = Object.keys(data[0]);
+            headers.forEach(header => {
+                const th = document.createElement('th');
+                th.className = 'px-6 py-3 text-left text-xs font-medium uppercase tracking-wider';
+                th.textContent = header.replace(/_/g, ' ');
+                thead.appendChild(th);
+            });
+            
+            // Ajouter les lignes de données
+            data.forEach((row, index) => {
+                const tr = document.createElement('tr');
+                tr.className = index % 2 === 0 ? 'bg-white dark:bg-gray-700' : 'bg-gray-50 dark:bg-gray-600';
+                
+                headers.forEach(header => {
+                    const td = document.createElement('td');
+                    td.className = 'px-6 py-4 whitespace-nowrap text-sm';
+                    
+                    // Formater la valeur en fonction du type
+                    if (typeof row[header] === 'number') {
+                        td.textContent = row[header].toFixed(2);
+                    } else {
+                        td.textContent = row[header];
+                    }
+                    
+                    tr.appendChild(td);
+                });
+                
+                tbody.appendChild(tr);
+            });
+        }
+        
+        // Fonction pour initialiser les graphiques de données
+        function initDataCharts(data) {
+            const isDarkMode = document.documentElement.classList.contains('dark');
+            const gridColor = isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+            const textColor = isDarkMode ? 'rgba(255, 255, 255, 0.8)' : 'rgba(0, 0, 0, 0.8)';
+            const primaryColor = isDarkMode ? '#6E6DFF' : '#5D5CDE';
+            
+            // Extraire les déviations
+            const azimuthDeviations = data.map(d => d.azimuth_deviation);
+            const inclinationDeviations = data.map(d => d.inclination_deviation);
+            
+            // Calculer les histogrammes pour les distributions
+            const azimuthBins = calculateHistogram(azimuthDeviations, 15);
+            const inclinationBins = calculateHistogram(inclinationDeviations, 15);
+            
+            // Configuration commune
+            const commonOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Déviation (°)',
+                            color: textColor
+                        },
+                        grid: {
+                            color: gridColor
+                        },
+                        ticks: {
+                            color: textColor
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Fréquence',
+                            color: textColor
+                        },
+                        grid: {
+                            color: gridColor
+                        },
+                        ticks: {
+                            color: textColor
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        enabled: true,
+                        backgroundColor: isDarkMode ? 'rgba(50, 50, 50, 0.8)' : 'rgba(255, 255, 255, 0.8)',
+                        titleColor: isDarkMode ? '#fff' : '#000',
+                        bodyColor: isDarkMode ? '#fff' : '#000',
+                        displayColors: false
+                    }
+                }
+            };
+            
+            // Graphique de distribution des déviations d'azimut
+            const azimuthDataCtx = document.getElementById('azimuthDataChart').getContext('2d');
+            if (azimuthDataChart) {
+                azimuthDataChart.destroy();
+            }
+            azimuthDataChart = new Chart(azimuthDataCtx, {
+                type: 'bar',
+                data: {
+                    labels: azimuthBins.map(bin => `${bin.min.toFixed(1)} à ${bin.max.toFixed(1)}`),
+                    datasets: [{
+                        label: 'Déviation d\'Azimut',
+                        data: azimuthBins.map(bin => bin.count),
+                        backgroundColor: primaryColor,
+                        borderColor: primaryColor,
+                        borderWidth: 1
+                    }]
+                },
+                options: commonOptions
+            });
+            
+            // Graphique de distribution des déviations d'inclinaison
+            const inclinationDataCtx = document.getElementById('inclinationDataChart').getContext('2d');
+            if (inclinationDataChart) {
+                inclinationDataChart.destroy();
+            }
+            inclinationDataChart = new Chart(inclinationDataCtx, {
+                type: 'bar',
+                data: {
+                    labels: inclinationBins.map(bin => `${bin.min.toFixed(1)} à ${bin.max.toFixed(1)}`),
+                    datasets: [{
+                        label: 'Déviation d\'Inclinaison',
+                        data: inclinationBins.map(bin => bin.count),
+                        backgroundColor: primaryColor,
+                        borderColor: primaryColor,
+                        borderWidth: 1
+                    }]
+                },
+                options: commonOptions
+            });
+        }
+        
+        // Fonction pour calculer un histogramme à partir d'un ensemble de données
+        function calculateHistogram(data, numBins) {
+            const min = Math.min(...data);
+            const max = Math.max(...data);
+            const range = max - min;
+            const binWidth = range / numBins;
+            
+            const bins = [];
+            for (let i = 0; i < numBins; i++) {
+                const binMin = min + i * binWidth;
+                const binMax = binMin + binWidth;
+                bins.push({
+                    min: binMin,
+                    max: binMax,
+                    count: 0
+                });
+            }
+            
+            // Compter les valeurs dans chaque intervalle
+            data.forEach(value => {
+                for (let i = 0; i < bins.length; i++) {
+                    if (value >= bins[i].min && value < bins[i].max) {
+                        bins[i].count++;
+                        break;
+                    }
+                    // Cas spécial pour la dernière valeur
+                    if (i === bins.length - 1 && value === bins[i].max) {
+                        bins[i].count++;
+                    }
+                }
+            });
+            
+            return bins;
+        }
+        
+        // Fonction pour simuler l'entraînement d'un modèle ML
+        async function trainModel(data) {
+            // Préparer la barre de progression
+            const progressBar = document.getElementById('progress-bar');
+            const trainingStatus = document.getElementById('training-status');
+            
+            // Simuler les étapes d'entraînement
+            const steps = [
+                { progress: 10, message: "Préparation des données..." },
+                { progress: 20, message: "Normalisation des features..." },
+                { progress: 30, message: "Séparation en ensembles d'entraînement et de test..." },
+                { progress: 40, message: "Initialisation du modèle d'azimut..." },
+                { progress: 50, message: "Entraînement du modèle d'azimut..." },
+                { progress: 60, message: "Validation du modèle d'azimut..." },
+                { progress: 70, message: "Initialisation du modèle d'inclinaison..." },
+                { progress: 80, message: "Entraînement du modèle d'inclinaison..." },
+                { progress: 90, message: "Validation du modèle d'inclinaison..." },
+                { progress: 100, message: "Entraînement terminé!" }
+            ];
+            
+            // Exécuter chaque étape d'entraînement avec un délai
+            for (const step of steps) {
+                await new Promise(resolve => setTimeout(resolve, 600));
+                progressBar.style.width = `${step.progress}%`;
+                trainingStatus.textContent = step.message;
+            }
+            
+            // Afficher les résultats après un court délai
+            await new Promise(resolve => setTimeout(resolve, 800));
+            
+            // Calculer des métriques simulées (R² - coefficient de détermination)
+            const azimuthAccuracy = (0.75 + Math.random() * 0.2).toFixed(3);
+            const inclinationAccuracy = (0.70 + Math.random() * 0.25).toFixed(3);
+            
+            // Stocker le modèle entraîné (dans une vraie application, ce serait un vrai modèle ML)
+            trainedModel = {
+                azimuthAccuracy,
+                inclinationAccuracy,
+                // Dans une implémentation réelle, on stockerait ici les coefficients ou poids du modèle
+                lithologyFactors: calculateLithologyFactors(data),
+                // On stockerait également des statistiques sur les données pour les intervalles de confiance
+                dataStats: calculateDataStats(data)
+            };
+            
+            // Afficher les résultats d'entraînement
+            document.getElementById('azimuth-accuracy').textContent = azimuthAccuracy;
+            document.getElementById('inclination-accuracy').textContent = inclinationAccuracy;
+            
+            // Afficher la section des résultats d'entraînement
+            document.getElementById('training-results').classList.remove('hidden');
+        }
+        
+        // Fonction pour calculer les facteurs de lithologie à partir des données
+        function calculateLithologyFactors(data) {
+            const lithologies = [...new Set(data.map(d => d.lithology))];
+            const factors = {};
+            
+            lithologies.forEach(lithology => {
+                const lithologyData = data.filter(d => d.lithology === lithology);
+                
+                // Calculer les moyennes des déviations pour chaque lithologie
+                const azimuthSum = lithologyData.reduce((sum, d) => sum + Math.abs(d.azimuth_deviation), 0);
+                const inclinationSum = lithologyData.reduce((sum, d) => sum + Math.abs(d.inclination_deviation), 0);
+                
+                const azimuthMean = azimuthSum / lithologyData.length;
+                const inclinationMean = inclinationSum / lithologyData.length;
+                
+                // Normaliser les facteurs
+                factors[lithology] = {
+                    azimuth: azimuthMean / 10,  // Facteur de normalisation arbitraire
+                    inclination: inclinationMean / 10
+                };
+            });
+            
+            return factors;
+        }
+        
+        // Fonction pour calculer des statistiques sur les données
+        function calculateDataStats(data) {
+            // Calculer les moyennes et écarts-types des déviations
+            const azimuthDeviations = data.map(d => d.azimuth_deviation);
+            const inclinationDeviations = data.map(d => d.inclination_deviation);
+            
+            const azimuthMean = azimuthDeviations.reduce((sum, val) => sum + val, 0) / azimuthDeviations.length;
+            const inclinationMean = inclinationDeviations.reduce((sum, val) => sum + val, 0) / inclinationDeviations.length;
+            
+            const azimuthVariance = azimuthDeviations.reduce((sum, val) => sum + Math.pow(val - azimuthMean, 2), 0) / azimuthDeviations.length;
+            const inclinationVariance = inclinationDeviations.reduce((sum, val) => sum + Math.pow(val - inclinationMean, 2), 0) / inclinationDeviations.length;
+            
+            const azimuthStdDev = Math.sqrt(azimuthVariance);
+            const inclinationStdDev = Math.sqrt(inclinationVariance);
+            
+            return {
+                azimuth: {
+                    mean: azimuthMean,
+                    stdDev: azimuthStdDev
+                },
+                inclination: {
+                    mean: inclinationMean,
+                    stdDev: inclinationStdDev
+                }
+            };
+        }
+        
+        // Fonction de prédiction avec le modèle ML (si disponible)
+        function predictDeviations(depth, azimuth, inclination, rotationSpeed, lithology) {
+            if (modelTrained && trainedModel) {
+                return predictWithTrainedModel(depth, azimuth, inclination, rotationSpeed, lithology);
+            } else {
+                return predictWithSimulation(depth, azimuth, inclination, rotationSpeed, lithology);
+            }
+        }
+        
+        // Prédiction avec le modèle ML entraîné
+        function predictWithTrainedModel(depth, azimuth, inclination, rotationSpeed, lithology) {
+            // Dans une implémentation réelle, on utiliserait ici le modèle ML entraîné
+            // pour faire la prédiction à partir des features
+            
+            // Pour cette simulation, nous allons utiliser les facteurs calculés à partir des données
+            const depthFactor = Math.sqrt(depth) / 10;
+            const factor = trainedModel.lithologyFactors[lithology];
+            
+            // Calculer l'impact de la vitesse de rotation
+            // Une vitesse de rotation élevée tend à augmenter les déviations
+            const rotationFactor = calculateRotationFactor(rotationSpeed);
+            
+            // Calculer les déviations de base
+            let azimuthDeviation = (depthFactor * factor.azimuth * rotationFactor * (0.9 + Math.random() * 0.2)).toFixed(2);
+            let inclinationDeviation = (depthFactor * factor.inclination * rotationFactor * (0.9 + Math.random() * 0.2)).toFixed(2);
+            
+            // Ajuster selon l'inclinaison initiale
+            const inclinationAdjustment = 1 + Math.abs(Math.cos(inclination * Math.PI / 180)) * 0.5;
+            azimuthDeviation *= inclinationAdjustment;
+            
+            // Ajouter un léger bruit aléatoire pour simuler l'incertitude du modèle
+            const azimuthNoise = trainedModel.dataStats.azimuth.stdDev * 0.2 * (Math.random() * 2 - 1);
+            const inclinationNoise = trainedModel.dataStats.inclination.stdDev * 0.2 * (Math.random() * 2 - 1);
+            
+            azimuthDeviation = parseFloat(azimuthDeviation) + azimuthNoise;
+            inclinationDeviation = parseFloat(inclinationDeviation) + inclinationNoise;
+            
+            // Déterminer le signe de la déviation à partir de la tendance dans les données
+            if (trainedModel.dataStats.azimuth.mean < 0) azimuthDeviation *= -1;
+            if (trainedModel.dataStats.inclination.mean < 0) inclinationDeviation *= -1;
+            
+            // Calculer la confiance basée sur la qualité du modèle
+            // Une vitesse de rotation très élevée ou très basse réduit légèrement la confiance
+            const rotationConfidenceAdjustment = Math.abs(rotationSpeed - 300) > 300 ? 0.95 : 1.0;
+            const azimuthConfidence = (parseFloat(trainedModel.azimuthAccuracy) * 100 * rotationConfidenceAdjustment).toFixed(1);
+            const inclinationConfidence = (parseFloat(trainedModel.inclinationAccuracy) * 100 * rotationConfidenceAdjustment).toFixed(1);
+            
+            // Générer des points pour la courbe de projection
+            const points = generateProjectionPoints(depth, azimuth, inclination, azimuthDeviation, inclinationDeviation);
+            
+            return {
+                azimuthDeviation: azimuthDeviation.toFixed(2),
+                inclinationDeviation: inclinationDeviation.toFixed(2),
+                azimuthConfidence,
+                inclinationConfidence,
+                projectionPoints: points
+            };
+        }
+        
+        // Prédiction avec la simulation de base (sans modèle ML)
+        function predictWithSimulation(depth, azimuth, inclination, rotationSpeed, lithology) {
+            // Facteurs d'influence de la lithologie (simulés)
+            const lithologyFactors = {
+                granite: { azimuth: 0.8, inclination: 0.6 },
+                basalt: { azimuth: 1.2, inclination: 0.9 },
+                limestone: { azimuth: 1.5, inclination: 1.3 },
+                sandstone: { azimuth: 1.8, inclination: 1.6 },
+                shale: { azimuth: 2.0, inclination: 1.8 },
+                gneiss: { azimuth: 0.9, inclination: 0.7 },
+                dolomite: { azimuth: 1.4, inclination: 1.2 },
+                quartzite: { azimuth: 0.7, inclination: 0.5 },
+                marble: { azimuth: 1.1, inclination: 0.8 },
+                slate: { azimuth: 1.7, inclination: 1.5 }
+            };
+            
+            // Calculer l'impact de la vitesse de rotation
+            // Une vitesse de rotation élevée tend à augmenter les déviations
+            const rotationFactor = calculateRotationFactor(rotationSpeed);
+            
+            // Prédiction de la déviation (ceci est une simulation)
+            const depthFactor = Math.sqrt(depth) / 10;
+            const factor = lithologyFactors[lithology];
+            
+            // Calculer déviations de base
+            let azimuthDeviation = (depthFactor * factor.azimuth * rotationFactor * (Math.random() * 0.5 + 0.75)).toFixed(2);
+            let inclinationDeviation = (depthFactor * factor.inclination * rotationFactor * (Math.random() * 0.5 + 0.75)).toFixed(2);
+            
+            // Ajuster selon l'inclinaison initiale (plus grande déviation pour les forages plus horizontaux)
+            const inclinationAdjustment = 1 + Math.abs(Math.cos(inclination * Math.PI / 180)) * 0.5;
+            azimuthDeviation *= inclinationAdjustment;
+            
+            // Ajouter un peu de randomisation
+            if (Math.random() > 0.5) azimuthDeviation *= -1;
+            if (Math.random() > 0.5) inclinationDeviation *= -1;
+            
+            // Confiance (simulée)
+            // Une vitesse de rotation très élevée ou très basse réduit légèrement la confiance
+            const rotationConfidenceAdjustment = Math.abs(rotationSpeed - 300) > 300 ? 0.95 : 1.0;
+            const azimuthConfidence = (Math.min(95, Math.max(60, 95 - depthFactor)) * rotationConfidenceAdjustment).toFixed(1);
+            const inclinationConfidence = (Math.min(95, Math.max(60, 90 - depthFactor)) * rotationConfidenceAdjustment).toFixed(1);
+            
+            // Générer des points pour la courbe de projection
+            const points = generateProjectionPoints(depth, azimuth, inclination, azimuthDeviation, inclinationDeviation);
+            
+            return {
+                azimuthDeviation: parseFloat(azimuthDeviation).toFixed(2),
+                inclinationDeviation: parseFloat(inclinationDeviation).toFixed(2),
+                azimuthConfidence,
+                inclinationConfidence,
+                projectionPoints: points
+            };
+        }
+        
+        // Fonction pour calculer l'influence de la vitesse de rotation
+        function calculateRotationFactor(rotationSpeed) {
+            // Courbe non-linéaire pour représenter l'impact de la vitesse de rotation sur les déviations
+            // Cette fonction renvoie un multiplicateur entre 0.6 et 1.5
+            // - Des vitesses très basses (50-100 RPM) ont un facteur faible (~0.6-0.8) car elles permettent un meilleur contrôle
+            // - Des vitesses moyennes (200-300 RPM) ont un facteur proche de 1.0 (effet neutre)
+            // - Des vitesses élevées (>400 RPM) ont un facteur élevé (>1.2) car elles peuvent amplifier les déviations
+            
+            // Point d'inflexion à 300 RPM
+            const optimalSpeed = 300;
+            
+            if (rotationSpeed <= optimalSpeed) {
+                // Pour les vitesses basses à moyennes (facteur entre 0.6 et 1.0)
+                return 0.6 + (0.4 * (rotationSpeed / optimalSpeed));
+            } else {
+                // Pour les vitesses élevées (facteur entre 1.0 et 1.5)
+                const excessSpeed = (rotationSpeed - optimalSpeed) / 700; // normalisation
+                return 1.0 + (0.5 * Math.min(1, excessSpeed));
+            }
+        }
+        
+        // Fonction pour générer des points de projection pour les graphiques
+        function generateProjectionPoints(depth, initialAzimuth, initialInclination, azimuthDeviation, inclinationDeviation) {
+            const points = [];
+            const intervals = 10;
+            const stepSize = depth / intervals;
+            
+            let currentAzimuth = parseFloat(initialAzimuth);
+            let currentInclination = parseFloat(initialInclination);
+            const azimuthStep = parseFloat(azimuthDeviation) / intervals;
+            const inclinationStep = parseFloat(inclinationDeviation) / intervals;
+            
+            for (let i = 0; i <= intervals; i++) {
+                const currentDepth = i * stepSize;
+                points.push({
+                    depth: currentDepth,
+                    azimuth: currentAzimuth,
+                    inclination: currentInclination
+                });
+                
+                // Ajout de petites variations aléatoires pour un effet plus réaliste
+                const randomFactor = 0.2;
+                currentAzimuth += azimuthStep + (Math.random() * randomFactor - randomFactor/2);
+                currentInclination += inclinationStep + (Math.random() * randomFactor - randomFactor/2);
+            }
+            
+            return points;
+        }
+        
+        // Fonction pour mettre à jour les graphiques de projection
+        function updateCharts(points) {
+            // Extraire les données pour les graphiques
+            const depths = points.map(p => p.depth);
+            const azimuths = points.map(p => p.azimuth);
+            const inclinations = points.map(p => p.inclination);
+            
+            // Mettre à jour le graphique d'azimut
+            azimuthChart.data.labels = depths;
+            azimuthChart.data.datasets[0].data = azimuths;
+            azimuthChart.update();
+            
+            // Mettre à jour le graphique d'inclinaison
+            inclinationChart.data.labels = depths;
+            inclinationChart.data.datasets[0].data = inclinations;
+            inclinationChart.update();
+        }
+        
+        // Initialisation des graphiques de projection
+        function initCharts() {
+            const isDarkMode = document.documentElement.classList.contains('dark');
+            const gridColor = isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+            const textColor = isDarkMode ? 'rgba(255, 255, 255, 0.8)' : 'rgba(0, 0, 0, 0.8)';
+            const primaryColor = isDarkMode ? '#6E6DFF' : '#5D5CDE';
+            
+            // Configuration commune
+            const commonOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Profondeur (m)',
+                            color: textColor
+                        },
+                        grid: {
+                            color: gridColor
+                        },
+                        ticks: {
+                            color: textColor
+                        }
+                    },
+                    y: {
+                        grid: {
+                            color: gridColor
+                        },
+                        ticks: {
+                            color: textColor
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        enabled: true,
+                        backgroundColor: isDarkMode ? 'rgba(50, 50, 50, 0.8)' : 'rgba(255, 255, 255, 0.8)',
+                        titleColor: isDarkMode ? '#fff' : '#000',
+                        bodyColor: isDarkMode ? '#fff' : '#000',
+                        displayColors: false,
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + '°';
+                            }
+                        }
+                    }
+                }
+            };
+            
+            // Graphique d'azimut
+            const azimuthCtx = document.getElementById('azimuthChart').getContext('2d');
+            if (azimuthChart) {
+                azimuthChart.destroy();
+            }
+            azimuthChart = new Chart(azimuthCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Azimut',
+                        data: [],
+                        borderColor: primaryColor,
+                        backgroundColor: 'rgba(93, 92, 222, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    ...commonOptions,
+                    scales: {
+                        ...commonOptions.scales,
+                        y: {
+                            ...commonOptions.scales.y,
+                            title: {
+                                display: true,
+                                text: 'Azimut (°)',
+                                color: textColor
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Graphique d'inclinaison
+            const inclinationCtx = document.getElementById('inclinationChart').getContext('2d');
+            if (inclinationChart) {
+                inclinationChart.destroy();
+            }
+            inclinationChart = new Chart(inclinationCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Inclinaison',
+                        data: [],
+                        borderColor: primaryColor,
+                        backgroundColor: 'rgba(93, 92, 222, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    ...commonOptions,
+                    scales: {
+                        ...commonOptions.scales,
+                        y: {
+                            ...commonOptions.scales.y,
+                            title: {
+                                display: true,
+                                text: 'Inclinaison (°)',
+                                color: textColor
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Soumission du formulaire
+        document.getElementById('drilling-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            // Récupérer les valeurs du formulaire
+            const depth = parseFloat(document.getElementById('depth').value);
+            const azimuth = parseFloat(document.getElementById('azimuth').value);
+            const inclination = parseFloat(document.getElementById('inclination').value);
+            const rotationSpeed = parseFloat(document.getElementById('rotation_speed').value);
+            const lithology = document.getElementById('lithology').value;
+            
+            // Simuler un chargement
+            document.querySelector('button[type="submit"]').innerHTML = `
+                <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Calcul en cours...
+            `;
+            
+            // Simuler un temps de traitement
+            setTimeout(() => {
+                // Prédire les déviations (avec modèle ML si disponible)
+                const prediction = predictDeviations(depth, azimuth, inclination, rotationSpeed, lithology);
+                
+                // Afficher les résultats
+                document.getElementById('azimuth-deviation').textContent = `${prediction.azimuthDeviation}°`;
+                document.getElementById('inclination-deviation').textContent = `${prediction.inclinationDeviation}°`;
+                document.getElementById('azimuth-confidence').textContent = `Confiance: ${prediction.azimuthConfidence}%`;
+                document.getElementById('inclination-confidence').textContent = `Confiance: ${prediction.inclinationConfidence}%`;
+                
+                // Mettre à jour les graphiques
+                updateCharts(prediction.projectionPoints);
+                
+                // Afficher la section des résultats
+                document.getElementById('results').classList.remove('hidden');
+                
+                // Réinitialiser le bouton
+                document.querySelector('button[type="submit"]').innerHTML = 'Prédire les Déviations';
+                
+                // Faire défiler jusqu'aux résultats
+                document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
+            }, 1500);
+        });
+        
+        // Gestion de l'onglet des modèles ML
+        document.getElementById('model-type').addEventListener('change', function() {
+            const modelType = this.value;
+            
+            // Masquer tous les conteneurs de paramètres
+            document.querySelectorAll('.model-params').forEach(container => {
+                container.classList.add('hidden');
+            });
+            
+            // Afficher le conteneur de paramètres correspondant au modèle sélectionné
+            document.getElementById(`params-${modelType}`).classList.remove('hidden');
+        });
+        
+        // Mise à jour des valeurs affichées pour les sliders des paramètres
+        // Random Forest
+        document.getElementById('rf-n-estimators').addEventListener('input', function() {
+            document.getElementById('rf-n-estimators-value').textContent = this.value;
+        });
+        document.getElementById('rf-max-depth').addEventListener('input', function() {
+            document.getElementById('rf-max-depth-value').textContent = this.value;
+        });
+        document.getElementById('rf-min-samples-split').addEventListener('input', function() {
+            document.getElementById('rf-min-samples-split-value').textContent = this.value;
+        });
+        document.getElementById('rf-min-samples-leaf').addEventListener('input', function() {
+            document.getElementById('rf-min-samples-leaf-value').textContent = this.value;
+        });
+        
+        // SVM
+        document.getElementById('svm-c').addEventListener('input', function() {
+            document.getElementById('svm-c-value').textContent = this.value;
+        });
+        document.getElementById('svm-gamma').addEventListener('input', function() {
+            document.getElementById('svm-gamma-value').textContent = this.value;
+        });
+        document.getElementById('svm-epsilon').addEventListener('input', function() {
+            document.getElementById('svm-epsilon-value').textContent = this.value;
+        });
+        
+        // Neural Network
+        document.getElementById('nn-neurons').addEventListener('input', function() {
+            document.getElementById('nn-neurons-value').textContent = this.value;
+        });
+        document.getElementById('nn-epochs').addEventListener('input', function() {
+            document.getElementById('nn-epochs-value').textContent = this.value;
+        });
+        document.getElementById('nn-learning-rate').addEventListener('input', function() {
+            document.getElementById('nn-learning-rate-value').textContent = parseFloat(this.value).toFixed(3);
+        });
+        
+        // Division des données
+        document.getElementById('train-test-split').addEventListener('input', function() {
+            const trainValue = parseInt(this.value);
+            document.getElementById('train-split-value').textContent = `${trainValue}%`;
+            document.getElementById('test-split-value').textContent = `${100 - trainValue}%`;
+        });
+        
+        // Vérification des données historiques disponibles pour l'onglet ML
+        window.addEventListener('load', function() {
+            document.getElementById('tab-models').addEventListener('click', function() {
+                // Vérifier si des données historiques sont disponibles
+                if (historicalData.length > 0) {
+                    document.getElementById('no-data-warning').classList.add('hidden');
+                    document.getElementById('model-selector').classList.remove('hidden');
+                } else {
+                    document.getElementById('no-data-warning').classList.remove('hidden');
+                    document.getElementById('model-selector').classList.add('hidden');
+                }
+            });
+        });
+        
+        // Entraînement du modèle ML avancé
+        document.getElementById('train-ml-model').addEventListener('click', async function() {
+            // Récupérer le type de modèle sélectionné
+            const modelType = document.getElementById('model-type').value;
+            const trainSplit = document.getElementById('train-test-split').value / 100;
+            
+            // Récupérer les paramètres spécifiques au modèle
+            let modelParams = {};
+            switch (modelType) {
+                case 'linear':
+                    modelParams = {
+                        normalize: document.getElementById('linear-normalize').value === 'true',
+                        regularization: document.getElementById('linear-regularization').value
+                    };
+                    break;
+                case 'random-forest':
+                    modelParams = {
+                        n_estimators: parseInt(document.getElementById('rf-n-estimators').value),
+                        max_depth: parseInt(document.getElementById('rf-max-depth').value),
+                        min_samples_split: parseInt(document.getElementById('rf-min-samples-split').value),
+                        min_samples_leaf: parseInt(document.getElementById('rf-min-samples-leaf').value)
+                    };
+                    break;
+                case 'svm':
+                    modelParams = {
+                        kernel: document.getElementById('svm-kernel').value,
+                        C: parseFloat(document.getElementById('svm-c').value),
+                        gamma: parseFloat(document.getElementById('svm-gamma').value),
+                        epsilon: parseFloat(document.getElementById('svm-epsilon').value)
+                    };
+                    break;
+                case 'neural-network':
+                    modelParams = {
+                        architecture: document.getElementById('nn-architecture').value,
+                        neurons: parseInt(document.getElementById('nn-neurons').value),
+                        epochs: parseInt(document.getElementById('nn-epochs').value),
+                        learning_rate: parseFloat(document.getElementById('nn-learning-rate').value)
+                    };
+                    break;
+            }
+            
+            // Afficher la section de progression
+            document.getElementById('ml-training-progress').classList.remove('hidden');
+            document.getElementById('ml-results').classList.add('hidden');
+            document.getElementById('ml-training-logs').innerHTML = '';
+            
+            // Simuler l'entraînement du modèle ML
+            await trainAdvancedModel(modelType, modelParams, trainSplit);
+        });
+        
+        // Fonction pour simuler l'entraînement d'un modèle ML avancé
+        async function trainAdvancedModel(modelType, params, trainSplit) {
+            // Préparer la barre de progression et les logs
+            const progressBar = document.getElementById('ml-progress-bar');
+            const trainingStatus = document.getElementById('ml-training-status');
+            const trainingLogs = document.getElementById('ml-training-logs');
+            
+            // Fonction pour ajouter un log
+            function addLog(message) {
+                const logLine = document.createElement('div');
+                logLine.className = 'mb-1';
+                logLine.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+                trainingLogs.appendChild(logLine);
+                trainingLogs.scrollTop = trainingLogs.scrollHeight;
+            }
+            
+            // Initialiser la barre de progression
+            progressBar.style.width = '0%';
+            trainingStatus.textContent = 'Initialisation...';
+            
+            // Log des paramètres d'entraînement
+            addLog(`Démarrage de l'entraînement avec un modèle de type: ${modelType}`);
+            addLog(`Paramètres: ${JSON.stringify(params)}`);
+            addLog(`Division des données: ${(trainSplit * 100).toFixed(0)}% entraînement, ${(100 - trainSplit * 100).toFixed(0)}% test`);
+            
+            // Simuler les étapes d'entraînement spécifiques au modèle
+            let trainingSteps = [];
+            let expectedAccuracy = 0;
+            let trainingSpeed = 1;
+            
+            switch (modelType) {
+                case 'linear':
+                    trainingSteps = [
+                        { progress: 10, message: "Préparation des données..." },
+                        { progress: 30, message: "Normalisation des features..." },
+                        { progress: 50, message: "Division des données..." },
+                        { progress: 70, message: "Entraînement du modèle linéaire..." },
+                        { progress: 90, message: "Validation du modèle..." },
+                        { progress: 100, message: "Entraînement terminé!" }
+                    ];
+                    expectedAccuracy = 0.72;
+                    trainingSpeed = 0.8; // Rapide
+                    break;
+                    
+                case 'random-forest':
+                    // Plus d'étapes pour un modèle plus complexe
+                    trainingSteps = [
+                        { progress: 5, message: "Préparation des données..." },
+                        { progress: 15, message: "Encodage des variables catégorielles..." },
+                        { progress: 25, message: "Division des données..." },
+                        { progress: 35, message: `Construction de ${params.n_estimators} arbres de décision...` },
+                        { progress: 75, message: "Entraînement du RandomForest..." },
+                        { progress: 90, message: "Validation du modèle..." },
+                        { progress: 100, message: "Entraînement terminé!" }
+                    ];
+                    // L'exactitude attendue dépend des paramètres
+                    expectedAccuracy = 0.75 + (params.n_estimators / 1000) + (params.max_depth / 100);
+                    // Plus d'arbres = plus lent
+                    trainingSpeed = 1 + (params.n_estimators / 100);
+                    break;
+                    
+                case 'svm':
+                    trainingSteps = [
+                        { progress: 10, message: "Préparation des données..." },
+                        { progress: 20, message: "Normalisation et mise à l'échelle..." },
+                        { progress: 30, message: "Division des données..." },
+                        { progress: 40, message: `Initialisation du SVM avec noyau ${params.kernel}...` },
+                        { progress: 60, message: "Optimisation des hyperplans..." },
+                        { progress: 85, message: "Validation du modèle..." },
+                        { progress: 100, message: "Entraînement terminé!" }
+                    ];
+                    // L'exactitude attendue dépend du type de noyau
+                    expectedAccuracy = (params.kernel === 'linear') ? 0.70 : 
+                                      (params.kernel === 'poly') ? 0.75 : 
+                                      (params.kernel === 'rbf') ? 0.83 : 0.78;
+                    // Certains noyaux sont plus lents que d'autres
+                    trainingSpeed = (params.kernel === 'linear') ? 1.0 : 
+                                   (params.kernel === 'poly') ? 1.5 : 
+                                   (params.kernel === 'rbf') ? 2.0 : 1.2;
+                    break;
+                    
+                case 'neural-network':
+                    const layerCount = (params.architecture === 'simple') ? 1 : 
+                                      (params.architecture === 'medium') ? 2 : 3;
+                    trainingSteps = [
+                        { progress: 5, message: "Préparation des données..." },
+                        { progress: 15, message: "Normalisation et mise à l'échelle..." },
+                        { progress: 20, message: "Division des données..." },
+                        { progress: 25, message: `Création d'un réseau avec ${layerCount} couches cachées...` },
+                        { progress: 30, message: "Initialisation des poids et biais..." },
+                        { progress: 40, message: `Début de l'entraînement (${params.epochs} époques)...` }
+                    ];
+                    
+                    // Ajouter des étapes intermédiaires pour simuler les époques
+                    const epochCheckpoints = 5;
+                    for (let i = 1; i <= epochCheckpoints; i++) {
+                        const progress = 40 + (i * 10);
+                        const epochNb = Math.round((i / epochCheckpoints) * params.epochs);
+                        trainingSteps.push({ 
+                            progress: progress, 
+                            message: `Époque ${epochNb}/${params.epochs}...` 
+                        });
+                    }
+                    
+                    trainingSteps.push({ progress: 95, message: "Validation du modèle..." });
+                    trainingSteps.push({ progress: 100, message: "Entraînement terminé!" });
+                    
+                    // L'exactitude attendue dépend de la complexité et des époques
+                    expectedAccuracy = 0.70 + (layerCount * 0.05) + (params.epochs / 2000);
+                    // Plus d'époques et de neurones = plus lent
+                    trainingSpeed = (params.epochs / 50) * (params.neurons / 30);
+                    break;
+            }
+            
+            // Exécuter chaque étape d'entraînement avec un délai
+            for (const step of trainingSteps) {
+                // Calculer le délai en fonction de la vitesse d'entraînement simulée
+                const delay = 300 * trainingSpeed;
+                await new Promise(resolve => setTimeout(resolve, delay));
+                
+                // Mettre à jour la progression
+                progressBar.style.width = `${step.progress}%`;
+                trainingStatus.textContent = step.message;
+                addLog(step.message);
+            }
+            
+            // Petite pause avant d'afficher les résultats
+            await new Promise(resolve => setTimeout(resolve, 800));
+            
+            // Calculer les métriques simulées
+            // Ajouter un peu de variation aléatoire tout en respectant les tendances attendues des modèles
+            const randomVariation = () => (Math.random() * 0.1 - 0.05);
+            const azimuthR2 = Math.min(0.95, Math.max(0.6, expectedAccuracy + randomVariation())).toFixed(3);
+            const inclinationR2 = Math.min(0.95, Math.max(0.55, expectedAccuracy * 0.95 + randomVariation())).toFixed(3);
+            
+            // Erreur quadratique moyenne (MSE) - inverse grossièrement corrélé au R²
+            const azimuthMSE = (10 * (1 - parseFloat(azimuthR2)) + randomVariation() * 5).toFixed(3);
+            const inclinationMSE = (12 * (1 - parseFloat(inclinationR2)) + randomVariation() * 5).toFixed(3);
+            
+            // Stocker le modèle entraîné
+            trainedModel = {
+                type: modelType,
+                params: params,
+                azimuthAccuracy: azimuthR2,
+                inclinationAccuracy: inclinationR2,
+                azimuthMSE: azimuthMSE,
+                inclinationMSE: inclinationMSE,
+                lithologyFactors: calculateLithologyFactors(historicalData),
+                dataStats: calculateDataStats(historicalData)
+            };
+            
+            // Afficher les résultats
+            document.getElementById('ml-azimuth-r2').textContent = azimuthR2;
+            document.getElementById('ml-azimuth-mse').textContent = azimuthMSE;
+            document.getElementById('ml-inclination-r2').textContent = inclinationR2;
+            document.getElementById('ml-inclination-mse').textContent = inclinationMSE;
+            
+            // Générer et afficher les graphiques de comparaison
+            createMLResultCharts();
+            
+            // Afficher la section des résultats
+            document.getElementById('ml-results').classList.remove('hidden');
+            
+            // Faire défiler jusqu'aux résultats
+            document.getElementById('ml-results').scrollIntoView({ behavior: 'smooth' });
+            
+            addLog(`Entraînement terminé. Modèle ${modelType} prêt avec R² = ${azimuthR2} (azimut) et ${inclinationR2} (inclinaison).`);
+        }
+        
+        // Création des graphiques pour les résultats ML
+        function createMLResultCharts() {
+            const isDarkMode = document.documentElement.classList.contains('dark');
+            const gridColor = isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+            const textColor = isDarkMode ? 'rgba(255, 255, 255, 0.8)' : 'rgba(0, 0, 0, 0.8)';
+            const primaryColor = isDarkMode ? '#6E6DFF' : '#5D5CDE';
+            
+            // Simuler des données de test et prédictions
+            const testSize = 30;
+            const testData = {
+                azimuth: {
+                    actual: Array.from({ length: testSize }, () => (Math.random() * 10 - 5)),
+                    predicted: []
+                },
+                inclination: {
+                    actual: Array.from({ length: testSize }, () => (Math.random() * 8 - 4)),
+                    predicted: []
+                }
+            };
+            
+            // Simuler les prédictions avec un niveau d'erreur basé sur la performance du modèle
+            const azimuthErrorFactor = 1 - parseFloat(trainedModel.azimuthAccuracy);
+            const inclinationErrorFactor = 1 - parseFloat(trainedModel.inclinationAccuracy);
+            
+            testData.azimuth.predicted = testData.azimuth.actual.map(value => 
+                value + (Math.random() * 2 - 1) * azimuthErrorFactor * 5
+            );
+            
+            testData.inclination.predicted = testData.inclination.actual.map(value => 
+                value + (Math.random() * 2 - 1) * inclinationErrorFactor * 5
+            );
+            
+            // Configuration commune pour les graphiques
+            const commonOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Valeurs réelles (°)',
+                            color: textColor
+                        },
+                        grid: {
+                            color: gridColor
+                        },
+                        ticks: {
+                            color: textColor
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Valeurs prédites (°)',
+                            color: textColor
+                        },
+                        grid: {
+                            color: gridColor
+                        },
+                        ticks: {
+                            color: textColor
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        backgroundColor: isDarkMode ? 'rgba(50, 50, 50, 0.8)' : 'rgba(255, 255, 255, 0.8)',
+                        titleColor: isDarkMode ? '#fff' : '#000',
+                        bodyColor: isDarkMode ? '#fff' : '#000',
+                        displayColors: false
+                    }
+                }
+            };
+            
+            // Calculer les limites min/max pour les axes
+            const azimuthMin = Math.min(...testData.azimuth.actual, ...testData.azimuth.predicted);
+            const azimuthMax = Math.max(...testData.azimuth.actual, ...testData.azimuth.predicted);
+            const inclinationMin = Math.min(...testData.inclination.actual, ...testData.inclination.predicted);
+            const inclinationMax = Math.max(...testData.inclination.actual, ...testData.inclination.predicted);
+            
+            // Graphique pour la déviation d'azimut
+            const azimuthChartCtx = document.getElementById('ml-azimuth-chart').getContext('2d');
+            const azimuthMLChart = new Chart(azimuthChartCtx, {
+                type: 'scatter',
+                data: {
+                    datasets: [
+                        {
+                            label: 'Prédictions',
+                            data: testData.azimuth.actual.map((actual, i) => ({
+                                x: actual,
+                                y: testData.azimuth.predicted[i]
+                            })),
+                            pointBackgroundColor: primaryColor,
+                            pointBorderColor: primaryColor,
+                            pointRadius: 4,
+                            pointHoverRadius: 6
+                        },
+                        {
+                            label: 'Ligne de référence (prédiction parfaite)',
+                            data: [
+                                { x: azimuthMin - 1, y: azimuthMin - 1 },
+                                { x: azimuthMax + 1, y: azimuthMax + 1 }
+                            ],
+                            type: 'line',
+                            borderColor: 'rgba(150, 150, 150, 0.5)',
+                            borderWidth: 1,
+                            borderDash: [5, 5],
+                            pointRadius: 0,
+                            pointHoverRadius: 0
+                        }
+                    ]
+                },
+                options: commonOptions
+            });
+            
+            // Graphique pour la déviation d'inclinaison
+            const inclinationChartCtx = document.getElementById('ml-inclination-chart').getContext('2d');
+            const inclinationMLChart = new Chart(inclinationChartCtx, {
+                type: 'scatter',
+                data: {
+                    datasets: [
+                        {
+                            label: 'Prédictions',
+                            data: testData.inclination.actual.map((actual, i) => ({
+                                x: actual,
+                                y: testData.inclination.predicted[i]
+                            })),
+                            pointBackgroundColor: primaryColor,
+                            pointBorderColor: primaryColor,
+                            pointRadius: 4,
+                            pointHoverRadius: 6
+                        },
+                        {
+                            label: 'Ligne de référence (prédiction parfaite)',
+                            data: [
+                                { x: inclinationMin - 1, y: inclinationMin - 1 },
+                                { x: inclinationMax + 1, y: inclinationMax + 1 }
+                            ],
+                            type: 'line',
+                            borderColor: 'rgba(150, 150, 150, 0.5)',
+                            borderWidth: 1,
+                            borderDash: [5, 5],
+                            pointRadius: 0,
+                            pointHoverRadius: 0
+                        }
+                    ]
+                },
+                options: commonOptions
+            });
+        }
+        
+        // Utiliser le modèle ML entraîné pour les prédictions
+        document.getElementById('use-ml-model').addEventListener('click', function() {
+            // Mettre à jour le statut du modèle dans l'onglet Prédiction
+            const modelStatus = document.getElementById('model-status');
+            modelStatus.className = 'text-green-600 dark:text-green-400 font-medium text-sm mb-2';
+            modelStatus.innerHTML = `
+                <svg class="inline-block w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                Modèle ${trainedModel.type.toUpperCase()} entraîné utilisé pour les prédictions (R² Az: ${trainedModel.azimuthAccuracy}, R² Inc: ${trainedModel.inclinationAccuracy})
+            `;
+            
+            // Définir le flag du modèle entraîné
+            modelTrained = true;
+            
+            // Basculer vers l'onglet de prédiction
+            document.getElementById('tab-prediction').click();
+        });
+        
+        // Afficher la comparaison des modèles
+        document.getElementById('compare-models').addEventListener('click', async function() {
+            // Afficher la section de comparaison des modèles
+            document.getElementById('models-comparison').classList.remove('hidden');
+            
+            // Simuler l'entraînement rapide de quelques modèles supplémentaires pour la comparaison
+            const modelsData = [
+                {
+                    name: trainedModel.type,
+                    azimuthR2: parseFloat(trainedModel.azimuthAccuracy),
+                    inclinationR2: parseFloat(trainedModel.inclinationAccuracy),
+                    azimuthMSE: parseFloat(trainedModel.azimuthMSE),
+                    inclinationMSE: parseFloat(trainedModel.inclinationMSE)
+                }
+            ];
+            
+            // Simuler les performances des autres modèles
+            const otherModels = ['linear', 'random-forest', 'svm', 'neural-network'].filter(m => m !== trainedModel.type);
+            
+            // Pour chaque autre modèle, simuler des performances légèrement différentes
+            otherModels.forEach(model => {
+                const basePerformance = {
+                    'linear': 0.72,
+                    'random-forest': 0.85,
+                    'svm': 0.83,
+                    'neural-network': 0.80
+                }[model];
+                
+                const variance = () => (Math.random() * 0.1 - 0.05);
+                const azimuthR2 = Math.min(0.95, Math.max(0.6, basePerformance + variance()));
+                const inclinationR2 = Math.min(0.95, Math.max(0.55, basePerformance * 0.95 + variance()));
+                const azimuthMSE = 10 * (1 - azimuthR2) + variance() * 5;
+                const inclinationMSE = 12 * (1 - inclinationR2) + variance() * 5;
+                
+                modelsData.push({
+                    name: model,
+                    azimuthR2: azimuthR2,
+                    inclinationR2: inclinationR2,
+                    azimuthMSE: azimuthMSE,
+                    inclinationMSE: inclinationMSE
+                });
+            });
+            
+            // Créer des graphiques de comparaison
+            createModelComparisonCharts(modelsData);
+            
+            // Faire défiler jusqu'à la section de comparaison
+            document.getElementById('models-comparison').scrollIntoView({ behavior: 'smooth' });
+        });
+        
+        // Création des graphiques de comparaison des modèles
+        function createModelComparisonCharts(modelsData) {
+            const isDarkMode = document.documentElement.classList.contains('dark');
+            const textColor = isDarkMode ? 'rgba(255, 255, 255, 0.8)' : 'rgba(0, 0, 0, 0.8)';
+            const gridColor = isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+            
+            // Formater les noms des modèles pour l'affichage
+            const modelNames = modelsData.map(m => {
+                switch(m.name) {
+                    case 'linear': return 'Régression Linéaire';
+                    case 'random-forest': return 'Random Forest';
+                    case 'svm': return 'SVM';
+                    case 'neural-network': return 'Réseau de Neurones';
+                    default: return m.name;
+                }
+            });
+            
+            // Générer des couleurs pour chaque modèle
+            const modelColors = [
+                '#5D5CDE', // Le modèle actuel utilise la couleur primaire
+                '#4CAF50', // Vert
+                '#F44336', // Rouge
+                '#FF9800'  // Orange
+            ];
+            
+            // Configuration commune pour les graphiques de comparaison
+            const commonOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 1,
+                        title: {
+                            display: true,
+                            text: 'R² (coefficient de détermination)',
+                            color: textColor
+                        },
+                        grid: {
+                            color: gridColor
+                        },
+                        ticks: {
+                            color: textColor
+                        }
+                    },
+                    x: {
+                        grid: {
+                            color: gridColor
+                        },
+                        ticks: {
+                            color: textColor
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: {
+                            color: textColor
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: isDarkMode ? 'rgba(50, 50, 50, 0.8)' : 'rgba(255, 255, 255, 0.8)',
+                        titleColor: isDarkMode ? '#fff' : '#000',
+                        bodyColor: isDarkMode ? '#fff' : '#000',
+                        callbacks: {
+                            label: function(context) {
+                                return `R²: ${context.raw.toFixed(3)}`;
+                            }
+                        }
+                    }
+                }
+            };
+            
+            // Graphique de comparaison pour la déviation d'azimut
+            const azimuthComparisonCtx = document.getElementById('model-comparison-azimuth').getContext('2d');
+            new Chart(azimuthComparisonCtx, {
+                type: 'bar',
+                data: {
+                    labels: modelNames,
+                    datasets: [
+                        {
+                            label: 'R² (coef. détermination)',
+                            data: modelsData.map(m => m.azimuthR2),
+                            backgroundColor: modelColors
+                        }
+                    ]
+                },
+                options: commonOptions
+            });
+            
+            // Graphique de comparaison pour la déviation d'inclinaison
+            const inclinationComparisonCtx = document.getElementById('model-comparison-inclination').getContext('2d');
+            new Chart(inclinationComparisonCtx, {
+                type: 'bar',
+                data: {
+                    labels: modelNames,
+                    datasets: [
+                        {
+                            label: 'R² (coef. détermination)',
+                            data: modelsData.map(m => m.inclinationR2),
+                            backgroundColor: modelColors
+                        }
+                    ]
+                },
+                options: commonOptions
+            });
+        }
+        
+        // Initialiser les graphiques au chargement
+        window.addEventListener('load', function() {
+            initCharts();
+            
+            // Vérifier si l'URL contient un paramètre pour ouvrir directement l'onglet des modèles ML
+            if (window.location.hash === '#models') {
+                document.getElementById('tab-models').click();
+            }
+        });
+        
+        // Mettre à jour les graphiques lors du changement de thème
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', initCharts);
+    </script>
+</body>
+</html>
